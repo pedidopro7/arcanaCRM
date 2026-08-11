@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import './auth.css';
 import AppShell from '@/components/app-shell';
 
 export const metadata: Metadata = {
-  title: 'Agency OS — Influencer Operations',
+  title: 'Arcana OS — Influencer Operations',
   description: 'Operação de clientes, campanhas e influenciadores em um único lugar.',
   icons: { icon: '/brand/agency-logo.jpeg', apple: '/brand/agency-logo.jpeg' },
 };
