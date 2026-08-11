@@ -5,14 +5,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import type { User } from '@supabase/supabase-js';
 import { navItems } from '@/lib/demo-data';
-import { iconMap, Search, Bell, Plus, Settings, Menu, X, CalendarDays, LogOut } from './icons';
+import { iconMap, Search, Bell, Plus, Settings, Menu, X, CalendarDays, LogOut, Package, MessageSquareText, CircleDollarSign, UserCheck } from './icons';
 import BrandLogo from './brand-logo';
 
-const groups = [
-  { label: 'Hoje', items: navItems.slice(0, 2) },
-  { label: 'Operação', items: navItems.slice(2, 5) },
-  { label: 'Gestão', items: navItems.slice(5) },
+type NavItem={label:string;href:string;icon:string};
+const extraOperation:NavItem[]=[
+  {label:'Logística',href:'/logistica',icon:'package'},
+  {label:'Conteúdos',href:'/conteudos',icon:'content'},
 ];
+const extraManagement:NavItem[]=[{label:'Financeiro',href:'/financeiro',icon:'finance'}];
+const groups=[
+  {label:'Hoje',items:navItems.slice(0,2) as NavItem[]},
+  {label:'Operação',items:[...(navItems.slice(2,5) as NavItem[]),...extraOperation]},
+  {label:'Gestão',items:[...(navItems.slice(5) as NavItem[]),...extraManagement]},
+];
+const extraIcons={package:Package,content:MessageSquareText,finance:CircleDollarSign};
 
 const authCss = `
 .auth-screen{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.12fr) minmax(420px,.88fr);background:#f7f8fc;color:#171a2b}
@@ -75,6 +82,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   }
 
+  const resolveIcon=(item:NavItem)=>((iconMap as Record<string,React.ComponentType<{size?:number}>>)[item.icon]||(extraIcons as Record<string,React.ComponentType<{size?:number}>>)[item.icon]||Settings);
+
   if (publicRoute) return <main className="public-page">{children}</main>;
   if (loadingAuth) return <><style>{authCss}</style><div className="auth-screen"><div className="auth-loading"><BrandLogo size={62} priority/><strong>Arcana OS</strong><span>Carregando seu workspace…</span></div></div></>;
   if (!supabase) return <><style>{authCss}</style><div className="auth-screen" style={{gridTemplateColumns:'1fr'}}><div className="auth-panel"><BrandLogo size={70} priority/><div className="eyebrow">Configuração necessária</div><h1>Conecte o Supabase</h1><p>As variáveis NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY precisam estar configuradas no Vercel.</p></div></div></>;
@@ -87,7 +96,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <label className="auth-field"><span>Senha</span><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Sua senha" autoComplete="current-password" required/></label>
       {authError && <div className="auth-error">{authError}</div>}
       <button className="primary-btn auth-submit" type="submit" disabled={authBusy}>{authBusy ? 'Entrando…' : 'Entrar no sistema'}</button>
-      <small>O acesso é validado diretamente pelo Supabase Auth e a sessão fica salva no navegador.</small>
+      <small>O acesso é validado diretamente pelo Supabase Auth e a sessão fica salva com segurança no navegador.</small>
     </form>
   </div></>;
 
@@ -97,11 +106,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return <><style>{authCss}</style><div className="app-shell">
     <aside className={`sidebar ${mobile ? 'sidebar-open' : ''}`}>
       <div className="brand"><BrandLogo size={44} priority /><div className="brand-copy"><strong>Arcana OS</strong><span>Influencer Operations</span></div><button className="mobile-close" onClick={() => setMobile(false)} aria-label="Fechar menu"><X size={19}/></button></div>
-      <nav className="nav">{groups.map(group => <div className="nav-group" key={group.label}><div className="nav-label">{group.label}</div>{group.items.map((item) => {const Icon = iconMap[item.icon as keyof typeof iconMap];const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);return <Link key={item.label} href={item.href} className={`nav-item ${active ? 'active' : ''}`} onClick={() => setMobile(false)}><span className="nav-icon"><Icon size={17}/></span><span>{item.label}</span></Link>})}</div>)}</nav>
-      <div className="sidebar-bottom"><Link href="/formularios/cadastro" className="quick-link"><Plus size={16}/> Formulário influencer</Link><Link href="/configuracoes/integracoes" className={`nav-item ${pathname.startsWith('/configuracoes') ? 'active' : ''}`}><span className="nav-icon"><Settings size={17}/></span><span>Configurações</span></Link><div className="user-card"><div className="avatar">{initials || 'US'}</div><div className="user-card-copy"><strong>{displayName}</strong><span>{user.email}</span></div><button onClick={signOut} className="user-logout" title="Sair" aria-label="Sair"><LogOut size={15}/></button></div></div>
+      <nav className="nav">{groups.map(group => <div className="nav-group" key={group.label}><div className="nav-label">{group.label}</div>{group.items.map((item) => {const Icon=resolveIcon(item);const active=item.href==='/'?pathname==='/':pathname.startsWith(item.href);return <Link key={item.label} href={item.href} className={`nav-item ${active ? 'active' : ''}`} onClick={() => setMobile(false)}><span className="nav-icon"><Icon size={17}/></span><span>{item.label}</span></Link>})}</div>)}</nav>
+      <div className="sidebar-bottom"><Link href="/formularios/cadastro" className="quick-link"><Plus size={16}/> Formulário influencer</Link><Link href="/configuracoes/integracoes" className={`nav-item ${pathname==='/configuracoes/integracoes' ? 'active' : ''}`}><span className="nav-icon"><Settings size={17}/></span><span>Integrações</span></Link><Link href="/configuracoes/usuarios" className={`nav-item ${pathname==='/configuracoes/usuarios' ? 'active' : ''}`}><span className="nav-icon"><UserCheck size={17}/></span><span>Equipe & acessos</span></Link><div className="user-card"><div className="avatar">{initials || 'US'}</div><div className="user-card-copy"><strong>{displayName}</strong><span>{user.email}</span></div><button onClick={signOut} className="user-logout" title="Sair" aria-label="Sair"><LogOut size={15}/></button></div></div>
     </aside>
     <div className="main-wrap"><header className="topbar"><button className="mobile-menu" onClick={() => setMobile(true)} aria-label="Abrir menu"><Menu size={20}/></button><div className="global-search"><Search size={16}/><input placeholder="Buscar influenciadores, campanhas, clientes..."/><kbd>⌘ K</kbd></div><div className="top-actions"><div className="session-pill"><span className="session-dot"/> Online</div><button className="icon-btn" aria-label="Calendário"><CalendarDays size={17}/></button><button className="icon-btn" aria-label="Notificações"><Bell size={17}/><span className="dot"/></button><Link href="/operacoes" className="primary-btn"><Plus size={16}/> Nova tarefa</Link></div></header><main className="content">{children}</main></div>
-    <nav className="mobile-bottom-nav" aria-label="Navegação principal">{navItems.slice(0,5).map((item) => {const Icon = iconMap[item.icon as keyof typeof iconMap];const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);return <Link key={item.label} href={item.href} className={active ? 'active' : ''}><Icon size={19}/><span>{item.label}</span></Link>})}</nav>
+    <nav className="mobile-bottom-nav" aria-label="Navegação principal">{navItems.slice(0,5).map((item) => {const Icon=resolveIcon(item as NavItem);const active=item.href==='/'?pathname==='/':pathname.startsWith(item.href);return <Link key={item.label} href={item.href} className={active ? 'active' : ''}><Icon size={19}/><span>{item.label}</span></Link>})}</nav>
     {mobile && <button className="scrim" onClick={() => setMobile(false)} aria-label="Fechar menu"/>}
   </div></>;
 }
