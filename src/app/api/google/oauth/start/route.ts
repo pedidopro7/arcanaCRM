@@ -1,21 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import crypto from 'node:crypto';
-import { getArcanaServerAuth } from '@/lib/auth-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-export async function GET(req:NextRequest) {
-  const auth=await getArcanaServerAuth(req);
-  if(!auth) return NextResponse.redirect(new URL('/',req.url));
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) return NextResponse.json({ error: 'Credenciais Google ainda não configuradas.' }, { status: 503 });
-  const state = crypto.randomBytes(24).toString('base64url');
-  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-  const url = oauth2.generateAuthUrl({ access_type: 'offline', prompt: 'consent', state,
-    scope: ['https://www.googleapis.com/auth/drive.file','https://www.googleapis.com/auth/documents'] });
-  const response = NextResponse.redirect(url);
-  response.cookies.set('google_oauth_state', state, { httpOnly: true, secure: process.env.NODE_ENV==='production', sameSite:'lax', maxAge:600, path:'/' });
-  response.cookies.set('google_oauth_org', auth.member.organization_id, { httpOnly:true, secure:process.env.NODE_ENV==='production', sameSite:'lax', maxAge:600, path:'/' });
-  return response;
-}
+export async function POST(req:Request){const admin=getSupabaseAdmin();if(!admin)return NextResponse.json({error:'Supabase não configurado.'},{status:503});const h=req.headers.get('authorization')||'';const token=h.startsWith('Bearer ')?h.slice(7):'';if(!token)return NextResponse.json({error:'Não autenticado.'},{status:401});const {data:{user},error}=await admin.auth.getUser(token);if(error||!user)return NextResponse.json({error:'Sessão inválida.'},{status:401});const {data:member}=await admin.from('organization_members').select('organization_id,role').eq('user_id',user.id).limit(1).maybeSingle();if(!member||!['admin','manager'].includes(member.role))return NextResponse.json({error:'Somente admin/gestor pode conectar integrações.'},{status:403});const clientId=process.env.GOOGLE_CLIENT_ID,clientSecret=process.env.GOOGLE_CLIENT_SECRET,redirectUri=process.env.GOOGLE_REDIRECT_URI;if(!clientId||!clientSecret||!redirectUri)return NextResponse.json({error:'Credenciais Google não configuradas.'},{status:503});const state=crypto.randomBytes(24).toString('base64url');const oauth2=new google.auth.OAuth2(clientId,clientSecret,redirectUri);const url=oauth2.generateAuthUrl({access_type:'offline',prompt:'consent',state,scope:['https://www.googleapis.com/auth/drive.file','https://www.googleapis.com/auth/documents']});const res=NextResponse.json({url});const opts={httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax' as const,maxAge:600,path:'/'};res.cookies.set('google_oauth_state',state,opts);res.cookies.set('google_oauth_org',member.organization_id,opts);return res}

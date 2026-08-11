@@ -2,57 +2,65 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { MetricCard, Badge, Progress, SectionTitle } from '@/components/ui';
-import { BriefcaseBusiness, Users, FileCheck2, CircleAlert, ArrowUpRight, Clock3, Package, MessageSquareText, ClipboardList } from '@/components/icons';
+import { getSupabaseBrowser } from '@/lib/supabase-browser';
+import { PageHeader, Stat, Badge, Progress, EmptyState, SkeletonRows } from '@/components/ui';
+import { BriefcaseBusiness, Users, FileCheck2, CircleAlert, ArrowUpRight, Clock3, Package, MessageSquareText, ClipboardList, CheckCircle2 } from '@/components/icons';
 
-type Campaign={id:string;name:string;status:string;phase:string;ends_at:string|null;clients?:{name:string}|null};
-type Task={id:string;title:string;type:string;priority:string;waiting_for:string;due_at:string|null;clients?:{name:string}|null};
+type Campaign={id:string;name:string;status:string;phase:string;ends_at:string|null;health:string|null;clients?:{name:string}|null};
+type Task={id:string;title:string;type:string;priority:string;waiting_for:string;due_at:string|null;clients?:{name:string}|null;campaigns?:{name:string}|null};
 
-const phaseProgress=(phase:string)=>({briefing:10,casting:28,approval:42,negotiation:56,contract:68,content:80,publication:92,completed:100}[phase]||15);
-const campaignTone=(s:string)=>s==='execution'||s==='active'?'green':s==='planning'?'blue':s==='paused'?'amber':'slate';
+const phaseProgress=(phase:string)=>({briefing:10,casting:25,approval:40,negotiation:55,contract:67,logistics:75,content:84,publication:94,completed:100}[phase]||15);
+const tone=(status:string)=>status==='execution'||status==='active'?'green':status==='planning'?'blue':status==='paused'?'amber':'slate';
 
 export default function Dashboard(){
+  const supabase=useMemo(()=>getSupabaseBrowser(),[]);
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');
-  const [counts,setCounts]=useState({clients:0,influencers:0,contracts:0,attention:0,waitingClient:0,waitingInfluencer:0,logistics:0,content:0});
+  const [counts,setCounts]=useState({clients:0,influencers:0,contracts:0,attention:0,overdue:0,today:0,blocked:0,waitingClient:0,waitingInfluencer:0,logistics:0,content:0});
   const [campaigns,setCampaigns]=useState<Campaign[]>([]);const [tasks,setTasks]=useState<Task[]>([]);
-  const supabase=useMemo(()=>{const url=process.env.NEXT_PUBLIC_SUPABASE_URL;const key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;return url&&key?createBrowserClient(url,key):null;},[]);
 
   useEffect(()=>{(async()=>{
-    if(!supabase){setError('Supabase não configurado.');setLoading(false);return;}
-    setLoading(true);setError('');
-    const {data:member}=await supabase.from('organization_members').select('organization_id').limit(1).maybeSingle();
-    if(!member){setError('Seu usuário ainda não está vinculado ao workspace.');setLoading(false);return;}
-    const today=new Date();const dayEnd=new Date(today);dayEnd.setHours(23,59,59,999);
-    const [clientsQ,influencersQ,contractsQ,attentionQ,waitingClientQ,waitingInfluencerQ,logisticsQ,contentQ,campaignQ,taskQ]=await Promise.all([
+    if(!supabase){setError('Supabase não configurado.');setLoading(false);return}
+    setLoading(true);setError('');const now=new Date();const start=new Date(now.getFullYear(),now.getMonth(),now.getDate());const end=new Date(start);end.setDate(end.getDate()+1);
+    const qs=await Promise.all([
       supabase.from('clients').select('*',{count:'exact',head:true}).eq('status','active'),
       supabase.from('influencers').select('*',{count:'exact',head:true}),
       supabase.from('contracts').select('*',{count:'exact',head:true}).neq('status','complete'),
-      supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').lte('due_at',dayEnd.toISOString()).eq('waiting_for','internal'),
+      supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').eq('waiting_for','internal').lt('due_at',end.toISOString()),
+      supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').eq('waiting_for','internal').lt('due_at',start.toISOString()),
+      supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').eq('waiting_for','internal').gte('due_at',start.toISOString()).lt('due_at',end.toISOString()),
+      supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').neq('waiting_for','internal'),
       supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').eq('waiting_for','client'),
       supabase.from('tasks').select('*',{count:'exact',head:true}).neq('status','done').eq('waiting_for','influencer'),
       supabase.from('shipments').select('*',{count:'exact',head:true}).not('status','in','("delivered","cancelled")'),
       supabase.from('deliverables').select('*',{count:'exact',head:true}).not('status','in','("published","complete")'),
-      supabase.from('campaigns').select('id,name,status,phase,ends_at,clients(name)').neq('status','completed').order('created_at',{ascending:false}).limit(4),
-      supabase.from('tasks').select('id,title,type,priority,waiting_for,due_at,clients(name)').neq('status','done').order('due_at',{ascending:true,nullsFirst:false}).limit(6)
+      supabase.from('campaigns').select('id,name,status,phase,ends_at,health,clients(name)').neq('status','completed').order('updated_at',{ascending:false}).limit(4),
+      supabase.from('tasks').select('id,title,type,priority,waiting_for,due_at,clients(name),campaigns(name)').neq('status','done').order('due_at',{ascending:true,nullsFirst:false}).limit(7),
     ]);
-    const err=[clientsQ,influencersQ,contractsQ,attentionQ,campaignQ,taskQ].find(q=>q.error)?.error;
-    if(err)setError(err.message);
-    setCounts({clients:clientsQ.count||0,influencers:influencersQ.count||0,contracts:contractsQ.count||0,attention:attentionQ.count||0,waitingClient:waitingClientQ.count||0,waitingInfluencer:waitingInfluencerQ.count||0,logistics:logisticsQ.count||0,content:contentQ.count||0});
-    setCampaigns((campaignQ.data||[]) as unknown as Campaign[]);setTasks((taskQ.data||[]) as unknown as Task[]);setLoading(false);
-  })();},[supabase]);
+    const err=qs.find((q:any)=>q.error)?.error;if(err)setError(err.message);
+    setCounts({clients:qs[0].count||0,influencers:qs[1].count||0,contracts:qs[2].count||0,attention:qs[3].count||0,overdue:qs[4].count||0,today:qs[5].count||0,blocked:qs[6].count||0,waitingClient:qs[7].count||0,waitingInfluencer:qs[8].count||0,logistics:qs[9].count||0,content:qs[10].count||0});
+    setCampaigns((qs[11].data||[]) as unknown as Campaign[]);setTasks((qs[12].data||[]) as unknown as Task[]);setLoading(false);
+  })()},[supabase]);
 
-  const fmtDue=(d:string|null)=>d?new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit'}).format(new Date(d)):'Sem prazo';
-  const taskIcon=(type:string)=>type==='contract'?FileCheck2:type==='logistics'?Package:type==='content'?MessageSquareText:ClipboardList;
   const todayLabel=new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date());
+  const fmt=(d:string|null)=>d?new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit'}).format(new Date(d)):'sem prazo';
 
   return <>
-    <div className="page-head"><div><div className="eyebrow">{todayLabel}</div><h1 className="page-title">Visão geral da operação</h1><p className="page-subtitle">Dados reais do workspace: o que precisa de atenção agora, sem planilhas paralelas.</p></div><div className="head-actions"><Link href="/campanhas" className="secondary-btn">Ver campanhas</Link><Link href="/operacoes" className="primary-btn keep-text">Abrir meu dia <ArrowUpRight size={16}/></Link></div></div>
-    {error&&<div className="success-box" style={{background:'#fff0f2',color:'#ba3b4d',marginBottom:14}}>{error}</div>}
-    <div className="grid-metrics"><MetricCard label="Clientes ativos" value={loading?'…':counts.clients} meta="marcas no workspace" icon={<BriefcaseBusiness size={16}/>}/><MetricCard label="Influenciadores" value={loading?'…':counts.influencers} meta="base cadastrada" icon={<Users size={16}/>}/><MetricCard label="Contratos pendentes" value={loading?'…':counts.contracts} meta="ainda não concluídos" icon={<FileCheck2 size={16}/>}/><MetricCard label="Precisa de atenção" value={loading?'…':counts.attention} meta="tarefas internas vencendo/atrasadas" icon={<CircleAlert size={16}/>} accent/></div>
-    <div className="two-col"><section className="panel"><div className="panel-head"><div><div className="panel-title">Campanhas em andamento</div><div className="panel-sub">Etapa atual e prazo das campanhas abertas.</div></div><Link className="ghost-btn" href="/campanhas">Ver todas <ArrowUpRight size={15}/></Link></div><div>{loading?<div className="panel-body">Carregando…</div>:campaigns.length===0?<div className="panel-body">Nenhuma campanha ativa.</div>:campaigns.map(c=>{const p=phaseProgress(c.phase);return <Link key={c.id} href={`/campanhas/${c.id}`} className="campaign-card" style={{display:'block',textDecoration:'none',color:'inherit'}}><div className="campaign-row"><div><div className="campaign-name">{c.name}</div><div className="campaign-client">{c.clients?.name||'Cliente'} · {c.phase}</div></div><Badge tone={campaignTone(c.status) as any}>{c.status}</Badge></div><div style={{display:'grid',gridTemplateColumns:'1fr auto',alignItems:'center',gap:12,marginTop:12}}><Progress value={p}/><span style={{fontSize:10,color:'#777'}}>{p}% · {c.ends_at?`até ${fmtDue(c.ends_at)}`:'sem prazo'}</span></div></Link>})}</div></section>
-    <section className="panel"><div className="panel-head"><div><div className="panel-title">Meu dia</div><div className="panel-sub">Próximas ações do banco.</div></div><Link className="ghost-btn" href="/operacoes">Abrir</Link></div><div className="panel-body task-list">{loading?<div>Carregando…</div>:tasks.length===0?<div>Nenhuma tarefa aberta.</div>:tasks.map(t=>{const Icon=taskIcon(t.type);return <div className="task-row" key={t.id}><div className="task-icon"><Icon size={14}/></div><div><div className="task-title">{t.title}</div><div className="task-meta"><span>{t.clients?.name||'Geral'}</span><span>•</span><span>{t.waiting_for==='internal'?'Interno':`Aguardando ${t.waiting_for}`}</span></div></div><div className="task-due">{fmtDue(t.due_at)}</div></div>})}</div></section></div>
-    <SectionTitle eyebrow="Controle" title="Pendências por etapa" description="Onde a operação está acumulando trabalho agora." />
-    <div className="grid-metrics"><MetricCard label="Aguardando cliente" value={counts.waitingClient} meta="tarefas bloqueadas pelo cliente" icon={<Clock3 size={16}/>}/><MetricCard label="Aguardando influencer" value={counts.waitingInfluencer} meta="dados, conteúdo, retornos" icon={<Users size={16}/>}/><MetricCard label="Logística" value={counts.logistics} meta="envios ainda não entregues" icon={<Package size={16}/>}/><MetricCard label="Conteúdo" value={counts.content} meta="entregáveis ainda abertos" icon={<MessageSquareText size={16}/>}/></div>
+    <PageHeader eyebrow={todayLabel} title="Sua operação, sem ruído." description="O Arcana prioriza o que exige ação e separa claramente o que está aguardando terceiros." action={<Link href="/operacoes" className="primary-btn">Abrir Meu Dia <ArrowUpRight size={14}/></Link>} secondary={<Link href="/campanhas" className="secondary-btn">Campanhas</Link>}/>
+    {error&&<div className="error-box" style={{marginBottom:12}}>{error}</div>}
+
+    <div className="priority-hero">
+      <section className="attention-card"><div className="attention-top"><div><div className="eyebrow" style={{color:'rgba(255,255,255,.58)'}}>Prioridade operacional</div><h2>{loading?'—':counts.attention}</h2><p>itens internos precisam de atenção até o fim do dia.</p></div><CircleAlert size={24}/></div><div className="attention-mini"><div><strong>{counts.overdue}</strong><span>Atrasadas</span></div><div><strong>{counts.today}</strong><span>Hoje</span></div><div><strong>{counts.blocked}</strong><span>Bloqueadas</span></div></div></section>
+      <section className="panel"><div className="panel-head"><div><div className="panel-title">Aguardando respostas</div><div className="panel-sub">O que não depende de você agora.</div></div><Clock3 size={16}/></div><div className="panel-body"><div className="detail-grid"><div className="detail-box"><span>Cliente</span><strong>{counts.waitingClient} pendências</strong></div><div className="detail-box"><span>Creator</span><strong>{counts.waitingInfluencer} pendências</strong></div><div className="detail-box"><span>Logística</span><strong>{counts.logistics} em aberto</strong></div><div className="detail-box"><span>Conteúdo</span><strong>{counts.content} entregáveis</strong></div></div></div></section>
+    </div>
+
+    <div className="grid-stats"><Stat label="Clientes ativos" value={loading?'…':counts.clients} meta="marcas no workspace" icon={<BriefcaseBusiness size={15}/>}/><Stat label="Creators" value={loading?'…':counts.influencers} meta="base centralizada" icon={<Users size={15}/>}/><Stat label="Contratos pendentes" value={loading?'…':counts.contracts} meta="ainda não concluídos" icon={<FileCheck2 size={15}/>}/><Stat label="Operação aberta" value={loading?'…':counts.logistics+counts.content} meta="logística + conteúdo" icon={<ClipboardList size={15}/>} emphasis/></div>
+
+    <div className="two-col">
+      <section className="panel"><div className="panel-head"><div><div className="panel-title">Campanhas em andamento</div><div className="panel-sub">Saúde, etapa e prazo das campanhas abertas.</div></div><Link href="/campanhas" className="ghost-btn">Ver todas <ArrowUpRight size={13}/></Link></div>{loading?<SkeletonRows count={4}/>:campaigns.length===0?<EmptyState icon={<BriefcaseBusiness size={20}/>} title="Nenhuma campanha ativa" description="Crie a primeira campanha para começar a acompanhar o fluxo." action={<Link href="/campanhas?new=1" className="primary-btn">Nova campanha</Link>}/>:<div>{campaigns.map(c=>{const p=phaseProgress(c.phase);return <Link href={`/campanhas/${c.id}`} className="campaign-card" key={c.id} style={{display:'block',padding:14,textDecoration:'none',borderBottom:'1px solid #f0f1f4'}}><div style={{display:'flex',justifyContent:'space-between',gap:12}}><div className="name-cell"><strong>{c.name}</strong><span>{c.clients?.name||'Cliente'} · {c.phase}</span></div><div style={{display:'flex',gap:6,alignItems:'center'}}><span className={`health-dot health-${c.health==='risk'?'risk':c.health==='watch'?'watch':'good'}`}>{c.health==='risk'?'Risco':c.health==='watch'?'Atenção':'No prazo'}</span><Badge tone={tone(c.status) as any}>{c.status}</Badge></div></div><div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'center',marginTop:11}}><Progress value={p}/><span style={{fontSize:8,color:'#777'}}>{p}% · {fmt(c.ends_at)}</span></div></Link>})}</div>}</section>
+      <section className="panel"><div className="panel-head"><div><div className="panel-title">Próximas ações</div><div className="panel-sub">Ordenadas pelo que exige resposta.</div></div><Link href="/operacoes" className="ghost-btn">Abrir</Link></div><div className="panel-body task-list">{loading?<SkeletonRows count={5}/>:tasks.length===0?<EmptyState icon={<CheckCircle2 size={20}/>} title="Nada pendente" description="Seu Meu Dia está limpo por enquanto."/>:tasks.map(t=><div className="task-row" key={t.id}><div className="task-icon"><ClipboardList size={14}/></div><div><div className="task-title">{t.title}</div><div className="task-meta"><span>{t.clients?.name||'Geral'}</span><span>•</span><span>{t.waiting_for==='internal'?'Interno':`Aguardando ${t.waiting_for}`}</span></div></div><div className={`task-due ${t.priority==='high'?'overdue':''}`}>{fmt(t.due_at)}</div></div>)}</div></section>
+    </div>
+
+    <div className="section-head"><div><h2>Fluxos que estão acumulando trabalho</h2><p>Uma leitura rápida do gargalo operacional.</p></div></div>
+    <div className="grid-stats"><Stat compact label="Aguardando cliente" value={counts.waitingClient} icon={<Clock3 size={15}/>}/><Stat compact label="Aguardando creator" value={counts.waitingInfluencer} icon={<Users size={15}/>}/><Stat compact label="Produtos & envios" value={counts.logistics} icon={<Package size={15}/>}/><Stat compact label="Conteúdo" value={counts.content} icon={<MessageSquareText size={15}/>}/></div>
   </>;
 }

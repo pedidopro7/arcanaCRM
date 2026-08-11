@@ -1,12 +1,11 @@
 {
-  "name": "agency-ops",
-  "version": "0.1.5",
+  "name": "arcana-os",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start"
   },
   "dependencies": {
     "@supabase/ssr": "0.7.0",
