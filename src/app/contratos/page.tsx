@@ -1,0 +1,17 @@
+import { Badge } from '@/components/ui';
+import { Search, Filter, Plus, MoreHorizontal, FileCheck2, Clock3, ExternalLink } from '@/components/icons';
+
+const contracts=[
+  {creator:'Bruno Mota',client:'Vans',campaign:'Knu Skool — Agosto',status:'Preparar contrato',owner:'Pedro',updated:'Hoje, 14:20',missing:'Nenhum'},
+  {creator:'Ana Silva',client:'Vans',campaign:'Knu Skool — Agosto',status:'Assinado',owner:'Pedro',updated:'08 ago',missing:'Nenhum'},
+  {creator:'Luiza Torres',client:'Vans',campaign:'Knu Skool — Agosto',status:'Negociação',owner:'Marina',updated:'Hoje, 11:05',missing:'Valor final'},
+  {creator:'Diego Reis',client:'Marca Nova',campaign:'Glow Launch',status:'Aguardando assinatura',owner:'Camila',updated:'10 ago',missing:'Nenhum'},
+  {creator:'Fernanda Lima',client:'—',campaign:'—',status:'Cadastro incompleto',owner:'Pedro',updated:'Hoje, 13:00',missing:'CNPJ e e-mail'},
+];
+const tone=(s:string)=>s==='Assinado'?'green':s.includes('assinatura')?'blue':s.includes('Preparar')?'amber':s.includes('incompleto')?'red':'slate';
+export default function Contratos(){return <>
+  <div className="page-head"><div><div className="eyebrow">Controle manual assistido</div><h1 className="page-title">Contratos</h1><p className="page-subtitle">O sistema organiza dados, pendências e arquivos; preparação e revisão continuam sob responsabilidade humana.</p></div><button className="primary-btn keep-text"><Plus size={16}/> Novo registro</button></div>
+  <div className="grid-metrics"><div className="metric-card"><div className="metric-top"><span>Para preparar</span><FileCheck2 size={15}/></div><div className="metric-value">2</div><div className="metric-meta">1 vence hoje</div></div><div className="metric-card"><div className="metric-top"><span>Em revisão</span><Clock3 size={15}/></div><div className="metric-value">1</div><div className="metric-meta">checagem interna</div></div><div className="metric-card"><div className="metric-top"><span>Aguardando assinatura</span><Clock3 size={15}/></div><div className="metric-value">3</div><div className="metric-meta">follow-up pendente</div></div><div className="metric-card metric-card-accent"><div className="metric-top"><span>Assinados no mês</span><FileCheck2 size={15}/></div><div className="metric-value">18</div><div className="metric-meta">arquivados no Drive</div></div></div>
+  <div className="toolbar"><div className="search-box"><Search size={16}/><input placeholder="Creator, cliente ou campanha..."/></div><button className="filter-btn"><Filter size={15}/> Status</button><button className="filter-btn"><Filter size={15}/> Responsável</button></div>
+  <div className="panel table-wrap"><table className="data-table"><thead><tr><th>Influencer</th><th>Cliente / campanha</th><th>Status</th><th>Dados faltantes</th><th>Responsável</th><th>Atualização</th><th>Documento</th><th></th></tr></thead><tbody>{contracts.map(c=><tr key={`${c.creator}-${c.campaign}`}><td><strong>{c.creator}</strong></td><td><div className="name-cell"><strong>{c.client}</strong><span>{c.campaign}</span></div></td><td><Badge tone={tone(c.status) as any}>{c.status}</Badge></td><td>{c.missing==='Nenhum'?<Badge tone="green">Completo</Badge>:<Badge tone="red">{c.missing}</Badge>}</td><td>{c.owner}</td><td>{c.updated}</td><td>{c.status==='Assinado'?<button className="ghost-btn" style={{height:30,padding:'0 6px'}}>Drive <ExternalLink size={12}/></button>:'—'}</td><td><MoreHorizontal size={16}/></td></tr>)}</tbody></table></div>
+</>}
