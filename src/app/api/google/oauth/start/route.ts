@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import crypto from 'node:crypto';
+import { getArcanaServerAuth } from '@/lib/auth-server';
 
-export async function GET() {
+export async function GET(req:NextRequest) {
+  const auth=await getArcanaServerAuth(req);
+  if(!auth) return NextResponse.redirect(new URL('/',req.url));
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;
@@ -13,5 +16,6 @@ export async function GET() {
     scope: ['https://www.googleapis.com/auth/drive.file','https://www.googleapis.com/auth/documents'] });
   const response = NextResponse.redirect(url);
   response.cookies.set('google_oauth_state', state, { httpOnly: true, secure: process.env.NODE_ENV==='production', sameSite:'lax', maxAge:600, path:'/' });
+  response.cookies.set('google_oauth_org', auth.member.organization_id, { httpOnly:true, secure:process.env.NODE_ENV==='production', sameSite:'lax', maxAge:600, path:'/' });
   return response;
 }
