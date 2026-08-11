@@ -141,6 +141,49 @@ create table public.activity_logs (
 );
 create index activity_logs_org_created_idx on public.activity_logs(organization_id,created_at desc);
 
+insert into public.organizations(name,slug) values ('Agency Workspace','agency-workspace') on conflict(slug) do nothing;
+
+-- Any user created in Supabase Auth is automatically attached to the default workspace.
+-- The first user becomes admin; subsequent users start as operator.
+create or replace function app_private.attach_new_user_to_workspace()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  target_org uuid;
+  initial_role text;
+begin
+  select id into target_org from public.organizations where slug='agency-workspace' limit 1;
+  if target_org is null then
+    insert into public.organizations(name,slug) values ('Agency Workspace','agency-workspace') returning id into target_org;
+  end if;
+  if exists(select 1 from public.organization_members where organization_id=target_org) then
+    initial_role := 'operator';
+  else
+    initial_role := 'admin';
+  end if;
+  insert into public.organization_members(organization_id,user_id,role)
+  values(target_org,new.id,initial_role)
+  on conflict(organization_id,user_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_attach_workspace on auth.users;
+create trigger on_auth_user_created_attach_workspace
+after insert on auth.users
+for each row execute function app_private.attach_new_user_to_workspace();
+
+-- Backfill users that may already exist before this migration is applied.
+insert into public.organization_members(organization_id,user_id,role)
+select o.id, u.id,
+  case when row_number() over(order by u.created_at, u.id)=1 then 'admin' else 'operator' end
+from auth.users u
+cross join lateral (select id from public.organizations where slug='agency-workspace' limit 1) o
+on conflict(organization_id,user_id) do nothing;
+
 create or replace function app_private.is_org_member(target_org uuid)
 returns boolean language sql stable security definer set search_path = public, auth
 as $$ select exists(select 1 from public.organization_members m where m.organization_id=target_org and m.user_id=auth.uid()); $$;
@@ -192,5 +235,3 @@ grant usage on schema public to authenticated;
 grant select,insert,update,delete on all tables in schema public to authenticated;
 revoke all on public.integrations from anon;
 revoke all on public.activity_logs from anon;
-
-insert into public.organizations(name,slug) values ('Agency Workspace','agency-workspace') on conflict(slug) do nothing;
